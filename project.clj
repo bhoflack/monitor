@@ -8,5 +8,7 @@
                  [compojure "1.0.4"]
                  [hiccup "1.0.0"]
                  [ring/ring-jetty-adapter "1.1.0"]]
-  :dev-dependencies [[swank-clojure "1.3.4"]]
+  :dev-dependencies [[swank-clojure "1.3.4"]
+                     [lein-ring "0.7.0"]]
+  :main monitor.core
   :ring {:handler monitor.web/app})

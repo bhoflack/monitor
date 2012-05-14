@@ -44,3 +44,6 @@
   (for [host '("ewaf-test.colo.elex.be" "ewaf-uat.colo.elex.be" "ewaf.colo.elex.be")]
     (.start
      (Thread. (fn [] (monitor-objects "org.apache.activemq:*,Type=Queue" :hostname host))))))
+
+(defn -main []
+  (start!))

@@ -1,13 +1,15 @@
 # monitor
 
-FIXME: write description
+Monitor polls a JMX server and adds the result to a db.  It also adds a http based viewer on the results.
 
 ## Usage
 
-FIXME: write
+  lein deps
 
-## License
+Start the http server
 
-Copyright (C) 2012 FIXME
+  lein ring server
 
-Distributed under the Eclipse Public License, the same as Clojure.
+Start the importer
+
+  lein run
