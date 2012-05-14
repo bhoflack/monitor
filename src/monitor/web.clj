@@ -32,7 +32,7 @@
     (view-layout
      [:ul
       (for [event events]
-        [:li [:a {:href (str "/host/" hostname "/" event)} event]])])))
+        [:li [:a {:href (str "/host/" hostname "/event/" event)} event]])])))
 
 (defn mbeans-page
   "Page with all means for a host and timestamp"
@@ -41,7 +41,7 @@
     (view-layout
      [:ul
       (for [mbean mbeans]
-        [:li [:a {:href (str "/host/" hostname "/" timestamp "/" (:id mbean))} (:uri mbean)]])])))
+        [:li [:a {:href (str "/host/" hostname "/event/" timestamp "/" (:id mbean))} (:uri mbean)]])])))
 
 (defn data-page
   "Page with all data for a mbean, host and timestamp"
@@ -59,12 +59,28 @@
                 [:td (:key d)]
                 [:td (:value d)]]))])))
 
+(defn attribute-page
+  "Page with all values for all uris for a given attribute"
+  [hostname key]
+  (let [data (find-latest-attribute-data-for-host hostname key)]
+    (view-layout
+     [:table
+      [:tr
+       [:th "URI"]
+       [:th "Key"]
+       [:th "Value"]]
+      (doall (for [d data]
+               [:tr
+                [:td (:uri d)]
+                [:td (:key d)]
+                [:td (:value d)]]))])))
 
 (defroutes app
   (GET "/" [] (hosts-page))
   (GET "/host/:hostname" [hostname] (timestamps-page hostname))
-  (GET "/host/:hostname/:timestamp" [hostname timestamp] (mbeans-page hostname timestamp))
-  (GET "/host/:hostname/:timestamp/:uri" [hostname timestamp uri] (data-page hostname timestamp uri))
+  (GET "/host/:hostname/key/:key" [hostname key] (attribute-page hostname key))
+  (GET "/host/:hostname/event/:timestamp" [hostname timestamp] (mbeans-page hostname timestamp))
+  (GET "/host/:hostname/event/:timestamp/:uri" [hostname timestamp uri] (data-page hostname timestamp uri))
   (route/not-found "<h1>Page not found</h1>"))
 
 

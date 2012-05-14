@@ -191,3 +191,22 @@
            and timestamp = ?
            and u.id = ?" host timestamp id]
       (doall res))))
+
+(defn find-latest-attribute-data-for-host
+  "Find the attribute data for a given attribute and a given hostname"
+  [host attribute]
+  (sql/with-connection ds
+    (sql/with-query-results res
+      ["select evu.uri, evd.key, evd.value
+  from host h
+    inner join event e on
+    h.id = e.hostid
+    inner join eventforuri evu on
+    e.id = evu.eventid
+    inner join eventdata evd on
+    evu.id = evd.eventforuriid
+  where
+    h.name = ?
+    and evd.key = ?
+    and e.timestamp = (select max(timestamp) from host inner join event e on h.id = e.hostid where h.name = host.name)" host attribute]
+      (doall res))))
