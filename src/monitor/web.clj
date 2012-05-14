@@ -28,8 +28,15 @@
 (defn timestamps-page
   "Page with all measured timestamps for a host"
   [hostname]
-  (let [events (find-events-for-host hostname)]
+  (let [keys (find-keys-for-host hostname)
+        keys1 (map :key keys)
+        events (find-events-for-host hostname)]
     (view-layout
+     [:h2 "available keys"]
+     [:ul
+      (for [key keys1]
+        [:li [:a {:href (str "/host/" hostname "/key/" key)} key]])]
+     [:h2 "events measured"]
      [:ul
       (for [event events]
         [:li [:a {:href (str "/host/" hostname "/event/" event)} event]])])))
@@ -72,6 +79,23 @@
       (doall (for [d data]
                [:tr
                 [:td (:uri d)]
+                [:td [:a {:href (str "/host/" hostname "/key/" (:key d) "/trend/" (:uriid d))} (:key d)]]
+                [:td (:value d)]]))])))
+
+(defn attribute-trend-page
+  "Show the trend for a given host, uri and attribute"
+  [hostname uriid key]
+  (let [uriid1 (Integer/parseInt uriid)
+        data (find-trend-for-host-uriid-attribute hostname uriid1 key)]
+    (view-layout
+     [:table
+      [:tr
+       [:th "Timestamp"]
+       [:th "Key"]
+       [:th "Value"]]
+      (doall (for [d data]
+               [:tr
+                [:td (:timestamp d)]
                 [:td (:key d)]
                 [:td (:value d)]]))])))
 
@@ -79,6 +103,7 @@
   (GET "/" [] (hosts-page))
   (GET "/host/:hostname" [hostname] (timestamps-page hostname))
   (GET "/host/:hostname/key/:key" [hostname key] (attribute-page hostname key))
+  (GET "/host/:hostname/key/:key/trend/:uri" [hostname key uri] (attribute-trend-page hostname uri key))
   (GET "/host/:hostname/event/:timestamp" [hostname timestamp] (mbeans-page hostname timestamp))
   (GET "/host/:hostname/event/:timestamp/:uri" [hostname timestamp uri] (data-page hostname timestamp uri))
   (route/not-found "<h1>Page not found</h1>"))

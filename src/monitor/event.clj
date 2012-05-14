@@ -197,7 +197,7 @@
   [host attribute]
   (sql/with-connection ds
     (sql/with-query-results res
-      ["select evu.uri, evd.key, evd.value
+      ["select evu.id as uriid, evu.uri, evd.key, evd.value
   from host h
     inner join event e on
     h.id = e.hostid
@@ -209,4 +209,42 @@
     h.name = ?
     and evd.key = ?
     and e.timestamp = (select max(timestamp) from host inner join event e on h.id = e.hostid where h.name = host.name)" host attribute]
+      (doall res))))
+
+(defn find-keys-for-host
+  "Find the latest measured keys for a host"
+  [host]
+  (sql/with-connection ds
+    (sql/with-query-results res
+      ["select distinct evd.key
+  from host h
+    inner join event e on
+    h.id = e.hostid
+    inner join eventforuri evu on
+    e.id = evu.eventid
+    inner join eventdata evd on
+    evu.id = evd.eventforuriid
+  where
+    h.name = ?
+    and e.timestamp = (select max(timestamp) from host inner join event e on h.id = e.hostid where host.name = h.name)" host]
+      (doall res))))
+
+(defn find-trend-for-host-uriid-attribute
+  "Find the trend data for a given host, uriid and attribute"
+  [host uriid attribute]
+  (sql/with-connection ds
+    (sql/with-query-results res
+      ["select evu.uri, e.timestamp, evd.key, evd.value
+from host h
+inner join event e on
+h.id = e.hostid
+inner join eventforuri evu on
+e.id = evu.eventid
+inner join eventdata evd on
+evu.id = evd.eventforuriid
+where
+h.name = ?
+and evd.key = ?
+and evu.uri = (select uri from eventforuri where id=?)
+order by e.timestamp asc" host attribute uriid]
       (doall res))))
