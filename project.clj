@@ -7,7 +7,8 @@
                  [org.clojure/java.jdbc "0.2.0"]
                  [compojure "1.0.4"]
                  [hiccup "1.0.0"]
-                 [ring/ring-jetty-adapter "1.1.0"]]
+                 [ring/ring-jetty-adapter "1.1.0"]
+                 [postgresql "9.1-901.jdbc4"]]
   :dev-dependencies [[swank-clojure "1.3.4"]
                      [lein-ring "0.7.0"]]
   :main monitor.core

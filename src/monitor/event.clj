@@ -1,32 +1,34 @@
 (ns monitor.event
   (:require [clojure.java.jdbc :as sql]))
 
-(def ds {:subprotocol "hsqldb"
-         :subname "file:event.db;hsqldb.write_delay=false"
-         :username "sa"
-         :password ""
-         :classname "org.hsqldb.jdbcDriver"})
+(def ds {:subprotocol "postgresql"
+         :subname "//localhost/monitor"
+         :user "monitor"
+         :password "monitor"
+         :classname "org.postgresql.Driver"})
+
+(def sequence-ddl "CREATE SEQUENCE seqid")
 
 (def host-ddl (sql/create-table-ddl
                :host
-               [:id "integer identity" "PRIMARY KEY"]
+               [:id "integer" "PRIMARY KEY"]
                [:name "varchar(255)"]))
 
 (def event-ddl (sql/create-table-ddl
                 :event
-                [:id "integer identity" "PRIMARY KEY"]
+                [:id "integer" "PRIMARY KEY"]
                 [:hostid "integer"]
                 [:timestamp "varchar(255)"]))
 
 (def event-for-uri-ddl (sql/create-table-ddl
                         :eventforuri
-                        [:id "integer identity" "PRIMARY KEY"]
+                        [:id "integer" "PRIMARY KEY"]
                         [:eventid "integer"]
                         [:uri "varchar(255)"]))
 
 (def event-data-ddl (sql/create-table-ddl
                      :eventdata
-                     [:id "integer identity" "PRIMARY KEY"]
+                     [:id "integer" "PRIMARY KEY"]
                      [:eventforuriid "integer"]
                      [:key "varchar(255)"]
                      [:value "varchar(255)"]))
@@ -34,8 +36,13 @@
 (defn table-exists?
   [table]
   (sql/with-connection ds
-    (sql/with-query-results rs ["select TABLE_NAME from INFORMATION_SCHEMA.SYSTEM_TABLES
-  where TABLE_SCHEM='PUBLIC' and TABLE_NAME=?" (.toUpperCase (name table))]
+    (sql/with-query-results rs ["select * from information_schema.tables where upper(table_name) = ?" (.toUpperCase (name table))]
+      (not (empty? rs)))))
+
+(defn sequence-exists?
+  [index]
+  (sql/with-connection ds
+    (sql/with-query-results rs ["select * from information_schema.sequences where upper(sequence_name) = ?" (.toUpperCase (name index))]
       (not (empty? rs)))))
 
 (defn create-conditional
@@ -46,16 +53,25 @@
           (sql/do-commands ddl)))))
 
 (defn init-db []
-  (doall
-   (map (fn [[table ddl]] (create-conditional table ddl)) [[:host host-ddl]
-                                                           [:event event-ddl]
-                                                           [:eventforuri event-for-uri-ddl]
-                                                           [:eventdata event-data-ddl]])))
+  (if (not (sequence-exists? :seqid))
+    (sql/with-connection ds
+      (sql/do-commands sequence-ddl)))
+
+  (doall (map (fn [[table ddl]] (create-conditional table ddl)) [[:host host-ddl]
+                                                                 [:event event-ddl]
+                                                                 [:eventforuri event-for-uri-ddl]
+                                                                 [:eventdata event-data-ddl]])))
 
 (defn first-result
   [sql-params]
   (sql/with-query-results rs sql-params
     (first rs)))
+
+(defn next-id []
+  (sql/with-connection ds
+    (sql/with-query-results rs ["select nextval('seqid') as id"]
+      (:id (first rs)))))
+
 
 (defn create-host-conditional!
   "Create a host if it doesn't exist"
@@ -64,7 +80,8 @@
     (sql/with-query-results rs ["select id, name from host where name=?" hostname]
       (if (empty? rs)
         (do
-          (sql/insert-record :host {:name hostname})
+          (sql/insert-record :host {:id (next-id)
+                                    :name hostname})
           (first-result ["select id, name from host where name=?" hostname]))
         (first rs)))))
 
@@ -74,21 +91,25 @@
     (sql/with-query-results rs ["select id, hostid, timestamp from event where hostid=? and timestamp=?" hostid timestamp]
       (if (empty? rs)
         (do
-          (sql/insert-record :event {:hostid hostid :timestamp timestamp})
+          (sql/insert-record :event {:id (next-id)
+                                     :hostid hostid
+                                     :timestamp timestamp})
           (first-result ["select id, hostid, timestamp from event where hostid=? and timestamp=?" hostid timestamp]))
         (first rs)))))
 
 (defn create-event-uri!
   [eventid uri]
   (sql/with-connection ds
-    (sql/insert-record :eventforuri {:eventid eventid
+    (sql/insert-record :eventforuri {:id (next-id)
+                                     :eventid eventid
                                      :uri uri})
     (first-result ["select id, eventid, uri from eventforuri where eventid = ? and uri = ?" eventid uri])))
 
 (defn create-event-data-uri!
   [eventforuriid key value]
   (sql/with-connection ds
-    (sql/insert-record :eventdata {:eventforuriid eventforuriid
+    (sql/insert-record :eventdata {:id (next-id)
+                                   :eventforuriid eventforuriid
                                    :key key
                                    :value value})))
 
