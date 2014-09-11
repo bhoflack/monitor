@@ -1,49 +1,120 @@
 (ns monitor.core
-  (:refer-clojure :exclude [extend])
-  (:require [clojure.java.jmx :as jmx])
-  (:use clj-time.core
-        monitor.event)
-  (:import (javax.management.remote JMXConnector))
-  (:gen-class))
+  (:import java.io.File
+           javax.management.remote.JMXConnector)
+  (:require [clojure.java.jmx :as jmx]
+            [clojure.edn :as edn])
+  (:gen-class :name monitor.bin))
 
-(defn find-mbeans [query & {:keys [hostname port jndi-path username password]
-                            :or {hostname "ewaf-test.colo.elex.be"
-                                 port 1099
-                                 jndi-path "karaf-root"
-                                 username "smx"
-                                 password "smx"}}]
-  (jmx/with-connection {:host hostname
-                        :port port
-                        :jndi-path jndi-path
-                        :environment {JMXConnector/CREDENTIALS (into-array String [username password])}}
-    (let [mb (jmx/mbean-names query)
-          uris (map #(.getCanonicalName %) mb)]
-      (doall (map (fn [uri] {:uri uri
-                             :mbean (jmx/mbean uri)}) uris)))))
+(def brokers (atom nil))
+(def results (agent nil))
 
+(def thread (atom nil))
+(def stop-thread (atom false))
+(def attributes (atom [:AverageEnqueueTime
+                       :QueueSize
+                       :ProducerCount
+                       :MemoryUsagePortion
+                       :MemoryPercentUsage
+                       :MaxEnqueueTime
+                       :InFlightCount
+                       :EnqueueCount
+                       :DispatchCount
+                       :DequeueCount
+                       :CursorMemoryUsage
+                       :CursorFull
+                       :ConsumerCount]))
 
-(defn monitor-objects
-  "Monitor all JMX MBeans that correspond to a given query.  Send the results to an agent."
-  [query & {:keys [hostname port jndi-path username password]
-            :or {hostname "ewaf-test.colo.elex.be"
-                 port 1099
-                 jndi-path "karaf-root"
-                 username "smx"
-                 password "smx"}}]
-  (while true
-   (let [ts (.toString (now))
-         mb (find-mbeans query :hostname hostname :port port :jndi-path jndi-path :username username :password password)]
-     (println "Logging events for host" hostname)
-     (doall (map (fn [m] (save! hostname ts (:uri m) (:mbean m))) mb)))
-   (Thread/sleep 60000)))
+(def sleep-time (atom 60000))
+
+(defn read-attributes
+  [attributes type opts]
+  (jmx/with-connection opts
+    (->> (jmx/mbean-names type)
+         (map #(.toString %))
+         (map (fn [name] [name (jmx/read name attributes)]))
+         (doall))))
+
+(defn assoc-append
+  [hm k v]
+  (assoc hm k (cons v (get hm k))))
+
+(defn append-attributes
+  [results attributes type broker]
+  (assoc-append results
+                (:host broker)
+                (read-attributes attributes type broker)))
+
+(defn write!
+  [filename]
+  (->> @results
+       (prn-str)
+       (spit filename)))
+
+(defn read!
+  [filename]
+  (->> (slurp filename)
+       (edn/read-string)
+       (send results merge)))
 
 (defn start!
+  [type filename]
+  (reset! stop-thread false)
+  (reset! thread
+          (Thread.
+           (fn []
+             (doall
+              (while (not @stop-thread)
+                (write! filename)                
+                (doseq [broker @brokers]
+                  (println "Polling broker " broker)
+                  (send results append-attributes @attributes type broker))
+                (Thread/sleep @sleep-time))))))
+  (.start @thread))
+
+(defn stop!
   []
-  (init-db)
+  (reset! stop-thread true))
 
-  (for [host '("ewaf-test.colo.elex.be" "ewaf-uat.colo.elex.be" "ewaf.colo.elex.be")]
-    (.start
-     (Thread. (fn [] (monitor-objects "org.apache.activemq:*,Type=Queue" :hostname host))))))
+(defn file-exists?
+  [filename]
+  (-> filename
+      (File.)
+      (.exists)))
 
-(defn -main []
-  (start!))
+(defn- init-state!
+  [filename]
+  (if (file-exists? filename)
+    (read! filename)))
+
+(defn- set-broker!
+  [brokers-config]
+  (->> brokers-config
+       (map (fn [broker]
+              {:host (:host broker)
+               :port (:port broker)
+               :jndi-path (:jndi-path broker)
+               :environment {JMXConnector/CREDENTIALS (into-array String (:credentials broker))}}))
+       (doall)
+       (reset! brokers)))
+
+(defn- init-config!
+  [filename]
+  (let [config (->> (slurp filename)
+                    (edn/read-string))]
+    (set-broker! (:brokers config))
+    (if (:attributes config)
+      (reset! attributes (:attributes config)))
+    (if (:sleep-time config)
+      (reset! sleep-time (:sleep-time config)))))
+    
+(defn -main
+  ([]
+     (-main "monitor.edn"))
+  ([filename]
+     (-main "properties.edn" filename))  
+  ([properties filename]
+     (init-state! filename)
+     (if (file-exists? properties)
+       (init-config! properties)
+       (throw (Exception. "Properties file is required")))
+     (start! "*:Type=Queue,*" filename)))

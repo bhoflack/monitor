@@ -1,6 +1,0 @@
-(ns monitor.test.core
-  (:use [monitor.core])
-  (:use [clojure.test]))
-
-(deftest replace-me ;; FIXME: write
-  (is false "No tests have been written."))
